@@ -7,7 +7,11 @@
 <body>
     <h1>Computer Vision Projects</h1>
     <h2>Project 1: Panorama</h2>
-    <img src="{{ url_for('panorama_stream') }}" alt="Panorama">
+    <form action="{{ url_for('panorama_capture') }}" method="post">
+        <label for="num_images">Número de imágenes:</label>
+        <input type="number" id="num_images" name="num_images" min="2" max="10" value="5">
+        <input type="submit" value="Capturar imágenes">
+    </form>
     <h2>Project 2: Object Tracking</h2>
     <img src="{{ url_for('object_tracking_stream') }}" alt="Object Tracking">
     <h2>Project 3: Pose Estimation</h2>
