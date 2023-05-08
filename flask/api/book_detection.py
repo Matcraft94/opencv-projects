@@ -61,6 +61,7 @@ def detect_books(frame):
 
 
 
+
 def process_book_detection():
     cap = cv2.VideoCapture(0)
 
