@@ -39,8 +39,8 @@ def process_object_tracking(*tracker_types):
         cv2.destroyAllWindows()
         return iter(()) # Devolver un objeto iterable vacío si no se pudo leer el frame
 
+    bbox = cv2.selectROI("Frame", frame, fromCenter=False, showCrosshair=True)
     for tracker_type in tracker_types:
-        bbox = cv2.selectROI("Frame", frame, fromCenter=False, showCrosshair=True)
         tracker = tracker_dict[tracker_type]
         trackers.add(tracker, frame, bbox)
 
@@ -55,6 +55,7 @@ def process_object_tracking(*tracker_types):
                 (x, y, w, h) = [int(v) for v in box]
                 tracker_type = tracker_types[i]
                 cv2.rectangle(frame, (x, y), (x + w, y + h), tracker_colors[tracker_type], 2)
+                cv2.putText(frame, tracker_type, (x, y - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.5, tracker_colors[tracker_type], 2)
 
         cv2.imshow("Frame", frame)
         key = cv2.waitKey(1) & 0xFF
