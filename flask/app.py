@@ -1,6 +1,7 @@
 # Creado por Lucy
 # Fecha: 05/07/2023
 
+import os
 from flask import Flask, render_template, Response, url_for
 from api.panorama_capture import capture_images
 from api.object_tracking_realtime import process_object_tracking
@@ -47,6 +48,11 @@ def pose_estimation_stream():
     
 @app.route('/book_detection_stream')
 def book_detection_stream():
+    PATH_SAVE_BOOKS = 'books_imgs'
+    # Comprobar si la ruta existe
+    if not os.path.exists(PATH_SAVE_BOOKS):
+        # Si no existe, crear la ruta
+        os.makedirs(PATH_SAVE_BOOKS)
     return Response(process_book_detection(),
                     mimetype='multipart/x-mixed-replace; boundary=frame')
 

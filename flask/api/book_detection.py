@@ -12,6 +12,14 @@ from PIL import Image
 
 pytesseract.pytesseract.tesseract_cmd = 'C:/Program Files/Tesseract-OCR/tesseract.exe'
 
+def save_book_image(frame, x, y, w, h, img_number):
+    book_img = frame[y:y + h, x:x + w]
+    cv2.imwrite(f'books_imgs/img_{img_number}.jpg', book_img)
+
+def save_book_name(img_number, book_name):
+    with open("books_names.txt", "a") as f:
+        f.write(f"img_{img_number}: {book_name}\n")
+        
 def preprocess_text(ocr_text):
     # Eliminar saltos de línea y espacios extra
     # ocr_text = re.sub(r'\n', ' ', ocr_text)
@@ -44,7 +52,7 @@ with open("yolo/coco.names", "r") as f:
     classes = [line.strip() for line in f.readlines()]
 colors = np.random.uniform(0, 255, size=(len(classes), 3))
 
-def detect_books(frame):
+def detect_books(frame, book_count):
     height, width, channels = frame.shape
     blob = cv2.dnn.blobFromImage(frame, 0.00392, (416, 416), (0, 0, 0), True, crop=False)
     net.setInput(blob)
@@ -83,12 +91,17 @@ def detect_books(frame):
         color = colors[class_ids[i]]
         cv2.rectangle(frame, (x, y), (x + w, y + h), color, 2)
 
-        # Extraer texto del libro y mostrarlo
+        # Extraer y guardar el texto del libro
         extracted_text = extract_text(frame, x, y, w, h)
         text_label = f"{label}: {extracted_text}"
         cv2.putText(frame, text_label, (x, y - 5), cv2.FONT_HERSHEY_SIMPLEX, 0.5, color, 2)
 
-    return frame
+        # Guardar la imagen y el nombre del libro
+        save_book_image(frame, x, y, w, h, book_count)
+        save_book_name(book_count, extracted_text)
+        book_count += 1
+
+    return frame, book_count
 
 
 
@@ -96,13 +109,14 @@ def detect_books(frame):
 
 def process_book_detection():
     cap = cv2.VideoCapture(0)
+    book_count = 0
 
     while True:
         ret, frame = cap.read()
         if not ret:
             break
 
-        frame = detect_books(frame)
+        frame, book_count = detect_books(frame, book_count)
         frame = imutils.resize(frame, width=800)
         ret, buffer = cv2.imencode('.jpg', frame)
         frame = buffer.tobytes()
