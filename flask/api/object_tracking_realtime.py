@@ -3,12 +3,28 @@
 
 import cv2
 
-def process_object_tracking():
+def process_object_tracking(*args):
     cap = cv2.VideoCapture(0)
 
-    # Definir algoritmos de seguimiento
-    tracker_types = ['MOSSE', 'CSRT']
-    trackers = [cv2.TrackerMOSSE_create(), cv2.TrackerCSRT_create()]
+    # Crear un diccionario de trackers
+    tracker_dict = {
+        'MIL': cv2.legacy.TrackerMIL_create(),
+        'KCF': cv2.legacy.TrackerKCF_create(),
+        'TLD': cv2.legacy.TrackerTLD_create(),
+        'BOOSTING': cv2.legacy.TrackerBoosting_create(),
+        'MEDIANFLOW': cv2.legacy.TrackerMedianFlow_create(),
+        'GOTURN': cv2.legacy.TrackerGOTURN_create(),
+        'MOSSE': cv2.legacy.TrackerMOSSE_create(),
+        'CSRT': cv2.legacy.TrackerCSRT_create(),
+    }
+
+    # Definir algoritmos de seguimiento en función de los argumentos proporcionados
+    if len(args) == 0:
+        tracker_keys = ['MOSSE']  # Utiliza MOSSE como el rastreador predeterminado si no se proporcionan argumentos
+    else:
+        tracker_keys = args
+
+    trackers = [tracker_dict[key] for key in tracker_keys]
 
     # Inicializar trackers con la región de interés del objeto en movimiento
     ret, frame = cap.read()
