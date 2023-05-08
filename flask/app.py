@@ -5,6 +5,8 @@ from flask import Flask, render_template, Response, url_for
 from api.panorama_capture import capture_images
 from api.object_tracking_realtime import process_object_tracking
 from api.pose_estimation_realtime import process_pose_estimation
+from api.book_detection import detect_books, process_book_detection
+
 
 app = Flask(__name__)
 
@@ -42,6 +44,12 @@ def object_tracking_stream():
 def pose_estimation_stream():
     return Response(gen_estimation(),
                     mimetype='multipart/x-mixed-replace; boundary=frame')
+    
+@app.route('/book_detection_stream')
+def book_detection_stream():
+    return Response(process_book_detection(),
+                    mimetype='multipart/x-mixed-replace; boundary=frame')
+
 
 @app.route('/panorama')
 def panorama():
@@ -54,6 +62,11 @@ def object_tracking():
 @app.route('/pose_estimation')
 def pose_estimation():
     return render_template('pose_estimation.html')
+
+@app.route('/book_detection')
+def book_detection():
+    return render_template('book_detection.html')
+
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', debug=True)
