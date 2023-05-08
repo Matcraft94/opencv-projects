@@ -19,7 +19,7 @@ def gen_panorama(camera):
                b'Content-Type: image/jpeg\r\n\r\n' + frame + b'\r\n\r\n')
 
 def gen_tracking():
-    for frame in process_object_tracking('MOSSE', 'CSRT', 'BOOSTING', 'MEDIANFLOW'): # Puedes agregar más trackers aquí
+    for frame in process_object_tracking('MOSSE', 'MEDIANFLOW'):#('MOSSE', 'CSRT', 'BOOSTING', 'MEDIANFLOW'):  # Puedes agregar más trackers aquí
         yield (b'--frame\r\n'
                b'Content-Type: image/jpeg\r\n\r\n' + frame + b'\r\n\r\n')
 

@@ -13,7 +13,6 @@ def process_object_tracking(*tracker_types):
         'TLD': cv2.legacy.TrackerTLD_create(),
         'BOOSTING': cv2.legacy.TrackerBoosting_create(),
         'MEDIANFLOW': cv2.legacy.TrackerMedianFlow_create(),
-        # 'GOTURN': cv2.legacy.TrackerGOTURN_create(),
         'MOSSE': cv2.legacy.TrackerMOSSE_create(),
         'CSRT': cv2.legacy.TrackerCSRT_create(),
     }
@@ -30,7 +29,7 @@ def process_object_tracking(*tracker_types):
     }
 
     # Inicializar los trackers
-    tracker_list = []
+    trackers = cv2.legacy.MultiTracker_create()
     cap = cv2.VideoCapture(0)
 
     # Seleccionar múltiples regiones en la primera captura
@@ -38,32 +37,26 @@ def process_object_tracking(*tracker_types):
     if not ret:
         cap.release()
         cv2.destroyAllWindows()
-        return iter(())  # Devolver un objeto iterable vacío si no se pudo leer el frame
+        return iter(()) # Devolver un objeto iterable vacío si no se pudo leer el frame
 
     for tracker_type in tracker_types:
         bbox = cv2.selectROI("Frame", frame, fromCenter=False, showCrosshair=True)
-        tracker = tracker_dict[tracker_type].create()  # Creamos el tracker usando create()
-        tracker.init(frame, bbox)
-        tracker_list.append(tracker)
+        tracker = tracker_dict[tracker_type]
+        trackers.add(tracker, frame, bbox)
 
     while True:
         ret, frame = cap.read()
         if not ret:
             break
 
-        for tracker_type, tracker in zip(tracker_types, tracker_list):
-            success, box = tracker.update(frame)
+        (success, boxes) = trackers.update(frame)
+        for i, box in enumerate(boxes):
             if success:
                 (x, y, w, h) = [int(v) for v in box]
+                tracker_type = tracker_types[i]
                 cv2.rectangle(frame, (x, y), (x + w, y + h), tracker_colors[tracker_type], 2)
 
-        frame = imutils.resize(frame, width=800)
-        ret, buffer = cv2.imencode('.jpg', frame)
-        frame = buffer.tobytes()
-
-        yield (b'--frame\r\n'
-               b'Content-Type: image/jpeg\r\n\r\n' + frame + b'\r\n\r\n')
-
+        cv2.imshow("Frame", frame)
         key = cv2.waitKey(1) & 0xFF
         if key == ord("q"):
             break
