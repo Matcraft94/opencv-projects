@@ -19,24 +19,20 @@ def process_object_tracking():
         cv2.destroyAllWindows()
 
     # Añadir la región de interés a los trackers
-    for i, tracker in enumerate(trackers):
-        tracker.init(frame, rects[i])
+    for tracker, rect in zip(trackers, rects):
+        tracker.init(frame, rect)
 
     while True:
         ret, frame = cap.read()
 
-        for i, tracker in enumerate(trackers):
+        for tracker in trackers:
             success, box = tracker.update(frame)
-
             if success:
                 (x, y, w, h) = [int(v) for v in box]
-                cv2.rectangle(frame, (x, y), (x + w, y + h), (0, 255, 0), 2)
-                cv2.putText(frame, tracker_types[i], (x, y - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 2)
+                cv2.rectangle(frame, (x, y), (x+w, y+h), (0, 255, 0), 2)
 
         _, jpeg = cv2.imencode('.jpg', frame)
-        frame = jpeg.tobytes()
-
-        yield frame
+        yield (jpeg.tobytes())
         key = cv2.waitKey(1) & 0xFF
 
         if key == ord("q"):

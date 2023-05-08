@@ -10,7 +10,7 @@ def process_pose_estimation():
     mp_drawing = mp.solutions.drawing_utils
     mp_pose = mp.solutions.pose
 
-    with mp_pose.Pose(min_detection_confidence=0.5, min_tracking_confidence=0.5) as pose:
+    with mp_pose.Pose(model_complexity=2, min_detection_confidence=0.5, min_tracking_confidence=0.5) as pose:
         while True:
             ret, frame = cap.read()
             frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
@@ -20,9 +20,7 @@ def process_pose_estimation():
                 mp_drawing.draw_landmarks(frame, result.pose_landmarks, mp_pose.POSE_CONNECTIONS)
 
             _, jpeg = cv2.imencode('.jpg', frame)
-            frame = jpeg.tobytes()
-
-            yield frame
+            yield (jpeg.tobytes())
             key = cv2.waitKey(1) & 0xFF
 
             if key == ord("q"):

@@ -1,37 +1,59 @@
 # Creado por Lucy
 # Fecha: 05/07/2023
 
-from flask import Flask, render_template, Response, request, redirect, url_for
-import api.panorama_capture
+from flask import Flask, render_template, Response, url_for
+from api.panorama_capture import capture_images
+from api.object_tracking_realtime import process_object_tracking
+from api.pose_estimation_realtime import process_pose_estimation
 
 app = Flask(__name__)
 
-@app.route("/")
+@app.route('/')
 def index():
-    return render_template("index.html")
+    return render_template('index.html')
 
-def gen(cam_function):
+def gen_panorama(camera):
     while True:
-        frame = cam_function()
-        if frame is None:
-            continue
-        yield (b'--frame\r\n'b'Content-Type: image/jpeg\r\n\r\n' + frame + b'\r\n')
+        frame = camera.get_frame()
+        yield (b'--frame\r\n'
+               b'Content-Type: image/jpeg\r\n\r\n' + frame + b'\r\n\r\n')
 
-@app.route("/panorama/capture", methods=["POST"])
-def panorama_capture():
-    num_images = int(request.form.get("num_images"))
-    panorama_capture.capture_images(num_images)
-    return redirect(url_for("index"))
+def gen_tracking():
+    for frame in process_object_tracking():
+        yield (b'--frame\r\n'
+               b'Content-Type: image/jpeg\r\n\r\n' + frame + b'\r\n\r\n')
 
-@app.route("/object_tracking")
+def gen_estimation():
+    for frame in process_pose_estimation():
+        yield (b'--frame\r\n'
+               b'Content-Type: image/jpeg\r\n\r\n' + frame + b'\r\n\r\n')
+
+@app.route('/panorama_stream')
+def panorama_stream():
+    return Response(gen_panorama(Camera()),
+                    mimetype='multipart/x-mixed-replace; boundary=frame')
+
+@app.route('/object_tracking_stream')
 def object_tracking_stream():
-    from api.object_tracking_realtime import process_object_tracking
-    return Response(gen(process_object_tracking), content_type="multipart/x-mixed-replace; boundary=frame")
+    return Response(gen_tracking(),
+                    mimetype='multipart/x-mixed-replace; boundary=frame')
 
-@app.route("/pose_estimation")
+@app.route('/pose_estimation_stream')
 def pose_estimation_stream():
-    from api.pose_estimation_realtime import process_pose_estimation
-    return Response(gen(process_pose_estimation), content_type="multipart/x-mixed-replace; boundary=frame")
+    return Response(gen_estimation(),
+                    mimetype='multipart/x-mixed-replace; boundary=frame')
 
-if __name__ == "__main__":
-    app.run(debug=True)
+@app.route('/panorama')
+def panorama():
+    return render_template('panorama.html')
+
+@app.route('/object_tracking')
+def object_tracking():
+    return render_template('object_tracking.html')
+
+@app.route('/pose_estimation')
+def pose_estimation():
+    return render_template('pose_estimation.html')
+
+if __name__ == '__main__':
+    app.run(host='0.0.0.0', debug=True)

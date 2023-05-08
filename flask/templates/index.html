@@ -7,14 +7,14 @@
 <body>
     <h1>Computer Vision Projects</h1>
     <h2>Project 1: Panorama</h2>
-    <form action="{{ url_for('panorama_capture') }}" method="post">
+    <form action="{{ url_for('panorama_stream') }}" method="post">
         <label for="num_images">Número de imágenes:</label>
         <input type="number" id="num_images" name="num_images" min="2" max="10" value="5">
         <input type="submit" value="Capturar imágenes">
     </form>
     <h2>Project 2: Object Tracking</h2>
-    <img src="{{ url_for('object_tracking_stream') }}" alt="Object Tracking">
+    <a href="{{ url_for('object_tracking_stream') }}"><button>Ver Object Tracking</button></a>
     <h2>Project 3: Pose Estimation</h2>
-    <img src="{{ url_for('pose_estimation_stream') }}" alt="Pose Estimation">
+    <a href="{{ url_for('pose_estimation_stream') }}"><button>Ver Pose Estimation</button></a>
 </body>
 </html>
