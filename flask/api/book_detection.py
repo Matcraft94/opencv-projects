@@ -2,12 +2,39 @@
 # Fecha: 05/07/2023
 
 import os
+import re
+import string
 import cv2
 import imutils
 import numpy as np
+import pytesseract
+from PIL import Image
+
+pytesseract.pytesseract.tesseract_cmd = 'C:/Program Files/Tesseract-OCR/tesseract.exe'
+
+def preprocess_text(ocr_text):
+    # Eliminar saltos de línea y espacios extra
+    # ocr_text = re.sub(r'\n', ' ', ocr_text)
+    ocr_text = re.sub(r'\s+', ' ', ocr_text)
+
+    # Eliminar signos de puntuación
+    ocr_text = ocr_text.translate(str.maketrans("", "", string.punctuation))
+
+    # Convertir todo el texto a minúsculas
+    ocr_text = ocr_text.lower()
+
+    return ocr_text
+
+def extract_text(frame, x, y, w, h):
+    cropped = frame[y:y + h, x:x + w]
+    gray = cv2.cvtColor(cropped, cv2.COLOR_BGR2GRAY)
+    _, thresh = cv2.threshold(gray, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
+    text = pytesseract.image_to_string(thresh, lang='eng', config='--psm 6')
+    text = preprocess_text(text)
+    return text.strip()
+
 
 # Cargar la red YOLOv4
-# net = cv2.dnn.readNet("yolo/yolov4.weights", "yolo/yolov4.cfg")
 net = cv2.dnn.readNet(os.path.abspath("yolo/yolov4.weights"), os.path.abspath("yolo/yolov4.cfg"))
 layer_names = net.getLayerNames()
 output_layers = [layer_names[i - 1] for i in net.getUnconnectedOutLayers().flatten()]
@@ -55,9 +82,14 @@ def detect_books(frame):
         label = str(classes[class_ids[i]])
         color = colors[class_ids[i]]
         cv2.rectangle(frame, (x, y), (x + w, y + h), color, 2)
-        cv2.putText(frame, label, (x, y - 5), cv2.FONT_HERSHEY_SIMPLEX, 0.5, color, 2)
+
+        # Extraer texto del libro y mostrarlo
+        extracted_text = extract_text(frame, x, y, w, h)
+        text_label = f"{label}: {extracted_text}"
+        cv2.putText(frame, text_label, (x, y - 5), cv2.FONT_HERSHEY_SIMPLEX, 0.5, color, 2)
 
     return frame
+
 
 
 
