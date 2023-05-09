@@ -1,6 +1,6 @@
-# Computer Vision Projects with OpenCV and MediaPipe
+# Computer Vision Projects con OpenCV y MediaPipe
 
-Este repositorio contiene tres proyectos de visión por computadora utilizando OpenCV y MediaPipe en Python. Los proyectos cubren la creación de imágenes panorámicas, el seguimiento de objetos en movimiento en videos y la estimación de postura humana en videos.
+Este repositorio contiene cuatro proyectos de visión por computadora utilizando OpenCV y MediaPipe en Python. Los proyectos cubren la creación de imágenes panorámicas, el seguimiento de objetos en movimiento en videos, la estimación de postura humana en videos y la detección de libros en estanterías.
 
 ## Proyecto 1: Creación de imagen panorámica
 
@@ -50,13 +50,33 @@ Mejoras posibles:
 - Utilizar los datos de landmarks para calcular ángulos y distancias entre partes del cuerpo y realizar análisis de movimiento más avanzados.
 - Combinar la estimación de postura con otros modelos de MediaPipe, como la estimación de manos o rostros, para una visión más completa del movimiento humano.
 
+## Proyecto 4: Detección de libros en estanterías
+
+El objetivo de este proyecto es detectar libros en una estantería y reconocer sus títulos mediante OCR (Reconocimiento óptico de caracteres). La aplicación se basa en OpenCV para la detección de bordes y contornos de libros y utiliza Tesseract para extraer texto de las imágenes.
+
+Pasos del proyecto:
+1. Tomar una fotografía de una estantería con libros.
+2. Utilizar OpenCV para detectar bordes y contornos de los libros en la imagen.
+3. Extraer y guardar imágenes individuales de los libros detectados.
+4. Utilizar Tesseract para realizar OCR en las imágenes de los libros y extraer sus títulos.
+5. Comparar los títulos extraídos con los libros previamente reconocidos y guardar solo los nuevos títulos reconocidos.
+6. Almacenar los títulos reconocidos en un archivo de texto.
+
+Mejoras posibles:
+- Mejorar la precisión del reconocimiento de texto utilizando técnicas de preprocesamiento de imágenes.
+- Implementar un algoritmo de aprendizaje automático para clasificar los libros por género o tema.
 
 ## Instalación
 
 Antes de ejecutar los proyectos, asegúrate de tener instaladas las siguientes bibliotecas:
 `pip install opencv-python opencv-python-headless mediapipe matplotlib`
+`pip install pytesseract`
+`pip install fuzzywuzzy`
 
+Asegúrate de tener también instalado Tesseract OCR en tu sistema siguiendo las instrucciones proporcionadas en la página oficial de [Tesseract OCR](https://github.com/tesseract-ocr/tesseract).
 
 ## Cómo usar
 
 Para ejecutar cada proyecto, sigue las instrucciones en los archivos de código fuente individuales. Asegúrate de proporcionar la ruta correcta a tus archivos de video e imágenes en los respectivos proyectos.
+
+Por el momento el proyecto 1 no es´ta funcionando, y el proyecto 2 está en revisión. Mientras el 4 se está implementando nuevas funcionalidades para ahcer un inventario.
