@@ -24,12 +24,16 @@ def save_book_image(frame, x, y, w, h, img_number):
 #         f.write(f"img_{img_number}: {book_name}\n")
 
 def save_book_name(img_number, book_name, prev_book_names):
-    from fuzzywuzzy import fuzz, process
-
     book_name = process.extractOne(book_name, choices=prev_book_names, scorer=fuzz.token_set_ratio)
     book_name = book_name[0] if book_name and book_name[1] >= 50 else 'No se pudo reconocer el título'
 
-    with open("books_names.txt", "r+") as f:
+    file_path = "books_names.txt"
+
+    if not os.path.exists(file_path):
+        with open(file_path, "w") as f:
+            pass
+
+    with open(file_path, "r+") as f:
         lines = f.readlines()
         if book_name+'\n' in lines:
             return
