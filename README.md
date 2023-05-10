@@ -68,15 +68,30 @@ Mejoras posibles:
 
 ## Instalación
 
-Antes de ejecutar los proyectos, asegúrate de tener instaladas las siguientes bibliotecas:
-`pip install opencv-python opencv-python-headless mediapipe matplotlib`
-`pip install pytesseract`
-`pip install fuzzywuzzy`
+### Requisitos
 
-Asegúrate de tener también instalado Tesseract OCR en tu sistema siguiendo las instrucciones proporcionadas en la página oficial de [Tesseract OCR](https://github.com/tesseract-ocr/tesseract).
+Este proyecto requiere la instalación de varias bibliotecas y herramientas. Asegúrate de tener instaladas las siguientes bibliotecas antes de intentar ejecutar cualquier proyecto:
 
-## Cómo usar
+```
+pip install opencv-python opencv-python-headless mediapipe matplotlib
 
-Para ejecutar cada proyecto, sigue las instrucciones en los archivos de código fuente individuales. Asegúrate de proporcionar la ruta correcta a tus archivos de video e imágenes en los respectivos proyectos.
+pip install pytesseract
 
-Por el momento el proyecto 1 no es´ta funcionando, y el proyecto 2 está en revisión. Mientras el 4 se está implementando nuevas funcionalidades para ahcer un inventario.
+pip install fuzzywuzzy
+```
+
+Además, necesitarás tener instalado [Tesseract OCR](https://github.com/tesseract-ocr/tesseract) en tu sistema. Puedes seguir las instrucciones para su instalación en su página oficial.
+
+### Modelo Darknet
+
+Este proyecto utiliza el modelo [yolov4](https://github.com/AlexeyAB/darknet/releases/download/darknet_yolo_v3_optimal/yolov4.weights) de [darknet](https://github.com/AlexeyAB/darknet.git). Para poder usarlo, necesitarás la [configuración](yolov4.cfg) y las [etiquetas](https://github.com/AlexeyAB/darknet/blob/master/data/coco.names) correspondientes.
+
+## Uso
+
+Para ejecutar cada proyecto, sigue las instrucciones detalladas en los archivos de código fuente individuales. Asegúrate de proporcionar la ruta correcta a tus archivos de vídeo e imágenes en los respectivos proyectos.
+
+### Notas
+
+- El proyecto 1 no está funcionando actualmente.
+- El proyecto 2 está en revisión.
+- El proyecto 4 está en fase de implementación de nuevas funcionalidades para la gestión de un inventario.
