@@ -12,7 +12,6 @@ Pasos del proyecto:
 3. Realizar un emparejamiento de características entre las imágenes utilizando técnicas como BFMatcher o FLANN.
 4. Utilizar la homografía para transformar y alinear las imágenes en una única imagen panorámica.
 5. Combinar las imágenes utilizando una técnica de fusión, como la fusión de imágenes basada en pirámides.
-6. Presentar los resultados en un Jupyter Notebook en formato PDF.
 
 Mejoras posibles:
 - Probar diferentes algoritmos de detección de características y emparejamiento para obtener resultados más precisos.
