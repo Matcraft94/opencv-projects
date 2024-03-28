@@ -1,1 +1,4 @@
 *.weights
+django_projects/**/migrations/
+*.pt
+*.weights.1
