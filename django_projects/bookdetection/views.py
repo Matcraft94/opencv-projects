@@ -25,8 +25,11 @@ from django.http import JsonResponse
 from django.views.decorators.csrf import csrf_exempt
 from django.db import transaction
 
+# PyMuPDF imports
+import fitz
+
 # Local application/library specific imports
-from .utils import BookImageProcessor, BookDetector
+from .utils import *
 from bookdetection.models import *
 from shared_utils.responses import standard_response
 
@@ -58,7 +61,7 @@ class BookImageProcessView(APIView):
                                 {
                                     'id': 1,
                                     'text_extracted': 'Example Book Title',
-                                    'image_path': 'book_1.png'
+                                    'cover_image_path': 'book_1.png'
                                 }
                             ]
                         },
@@ -118,9 +121,10 @@ class BookImageProcessView(APIView):
                     book, created = Book.objects.get_or_create(title=truncated_text, defaults={'author': 'Unknown (transcription)'})
                     print(f"Book created: {created}, Title: '{book.title}'")
 
-                    image_path = os.path.join(images_dir, f'book_{index}.png')
-                    cv2.imwrite(image_path, book_image)
-                    book.image_path = image_path
+                    cover_image_path = os.path.join(images_dir, f'book_{index}.png')
+                    cv2.imwrite(cover_image_path, book_image)
+                    book.cover_image_path = cover_image_path
+                    book.book_type = 'physical'
                     book.save()
 
                     book_ids.append(book.id)
@@ -130,7 +134,7 @@ class BookImageProcessView(APIView):
                 return standard_response(
                     data={
                         "book_count": len(data),
-                        "books": [{"id": book_id, "title": book.title, "image_path": book.image_path} for book_id in book_ids]
+                        "books": [{"id": book_id, "title": book.title, "cover_image_path": book.cover_image_path} for book_id in book_ids]
                     },
                     message="Books processed successfully." if len(data) > 0 else "No books detected."
                 )
@@ -153,7 +157,8 @@ class BookImageProcessView(APIView):
             )
 
     def get(self, request, *args, **kwargs):
-        books = Book.objects.all().values('id', 'title', 'author', 'image_path', 'genre__name', 'created_at')
+        books = Book.objects.all().values('id', 'title', 'author', 'cover_image_path',
+                                          'digital_file_path', 'book_type', 'genre__name', 'created_at')
         book_list = list(books)
 
         # Convertir 'genre__name' a 'genre' y 'created_at' a string
@@ -169,7 +174,62 @@ class BookImageProcessView(APIView):
             )
 
         
+class BookPDFProcessView(APIView):
+    parser_classes = (MultiPartParser, FormParser)
 
+    def post(self, request, *args, **kwargs):
+        if request.method != 'POST' or not request.FILES.getlist('pdf_file'):
+            return standard_response(
+                data={},
+                message='Método no permitido o archivos PDF no proporcionados.',
+                code=status.HTTP_400_BAD_REQUEST,
+                success=False
+            )
+
+        pdf_files = request.FILES.getlist('pdf_file')
+        response_data = []
+        
+        for pdf_file in pdf_files:
+            file_stream = pdf_file.read()
+            try:
+                pdf = fitz.open(stream=file_stream, filetype="pdf")
+            except Exception as e:
+                response_data.append({'filename': pdf_file.name, 'success': False, 'message': str(e)})
+                continue
+
+            metadatos = pdf.metadata
+            title = metadatos.get('title', 'Título desconocido')
+            author = metadatos.get('author', 'Autor desconocido')
+
+            pdf_path = os.path.expanduser(f'~/books/{pdf_file.name}')
+            os.makedirs(os.path.dirname(pdf_path), exist_ok=True)
+
+            try:
+                with open(pdf_path, 'wb+') as destination:
+                    destination.write(file_stream)
+            except Exception as e:
+                response_data.append({'filename': pdf_file.name, 'success': False, 'message': str(e)})
+                continue
+
+            try:
+                book, created = Book.objects.update_or_create(
+                    title=title,
+                    defaults={
+                        'author': author,
+                        'digital_file_path': pdf_path,
+                        'book_type': 'digital',
+                    }
+                )
+                # Crea una descripción genérica si no existe una ya
+                Description.objects.get_or_create(
+                    book=book,
+                    defaults={'content': 'Descripción genérica aún no disponible.'}
+                )
+                response_data.append({'filename': pdf_file.name, 'success': True, 'book_id': book.id, 'message': 'Processed successfully'})
+            except Exception as e:
+                response_data.append({'filename': pdf_file.name, 'success': False, 'message': str(e)})
+
+        return standard_response(data=response_data, message="Batch processing completed")
 
 
 class BookDescriptionView(APIView):
@@ -193,3 +253,108 @@ class BookDescriptionView(APIView):
             return self.standard_response(message="Book not found.", code=status.HTTP_404_NOT_FOUND, success=False)
         except Exception as e:
             return self.standard_response(message=str(e), code=status.HTTP_400_BAD_REQUEST, success=False)
+        
+
+# class ExtractPDFInfoView(APIView):
+
+#     def post(self, request, *args, **kwargs):
+#         book_ids = request.data.get('book_ids')
+
+#         if not book_ids:
+#             return standard_response(
+#                 data={},
+#                 message='No book IDs provided',
+#                 code=status.HTTP_400_BAD_REQUEST,
+#                 success=False
+#             )
+
+#         response_data = []
+#         ai_client = OpenAIClient()
+
+#         for book_id in book_ids:
+#             try:
+#                 book = Book.objects.get(id=book_id, book_type='digital')
+#             except Book.DoesNotExist:
+#                 response_data.append({'error': f'Book with ID {book_id} not found or is not digital'})
+#                 continue
+
+#             pdf_path = book.digital_file_path
+#             if not os.path.exists(pdf_path):
+#                 response_data.append({'error': f'PDF file for book ID {book_id} not found'})
+#                 continue
+            
+#             try:
+#                 text_content = []
+#                 pdf = fitz.open(pdf_path)
+#                 for page in pdf:
+#                     text = page.get_text().strip()
+#                     if text:
+#                         text_content.append(text)
+#                         if len(text_content) >= 3:
+#                             break
+#                 pdf.close()
+#             except Exception as e:
+#                 response_data.append({'error': f'Failed to read PDF for book ID {book_id}: {str(e)}'})
+#                 continue
+            
+#             # prompt = f"Extract the title, authors, main topic, and secondary topics from the following text: {' '.join(text_content)}"
+#             analysis_result = ai_client.analyze_text(text_content)
+
+#             response_data.append(analysis_result)
+
+#         return standard_response(data=response_data, message="PDF information extraction completed")
+
+class ExtractPDFInfoView(APIView):
+
+    def post(self, request, *args, **kwargs):
+        book_ids = request.data.get('book_ids')
+
+        if not book_ids:
+            return standard_response(
+                data={},
+                message='No book IDs provided',
+                code=status.HTTP_400_BAD_REQUEST,
+                success=False
+            )
+
+        response_data = []
+        ai_client = OpenAIClient()
+
+        for book_id in book_ids:
+            with transaction.atomic():
+                try:
+                    book = Book.objects.select_for_update().get(id=book_id, book_type='digital')
+                except Book.DoesNotExist:
+                    response_data.append({'error': f'Book with ID {book_id} not found or is not digital'})
+                    continue
+
+                pdf_path = book.digital_file_path
+                text_content = PDFTextExtractor.extract_text_from_pdf(pdf_path)
+                if text_content is None or text_content == '':
+                    response_data.append({'error': f'Failed to extract text for book ID {book_id}'})
+                    continue
+
+                analysis_result = ai_client.analyze_text(text_content)
+
+                # Actualiza el título y autor
+                book.title = analysis_result.get('title', book.title)
+                book.author = analysis_result.get('author', book.author)
+                book.save()
+
+                # Actualiza el tema principal
+                main_topic_name = analysis_result.get('main_topic')
+                if main_topic_name:
+                    main_topic, _ = Genre.objects.get_or_create(name=main_topic_name)
+                    book.main_topic = main_topic
+                    book.save()
+
+                # Actualiza los temas secundarios
+                BookTopic.objects.filter(book=book).delete()
+                for idx, topic_name in enumerate(analysis_result.get('secondary_topics', [])):
+                    topic, _ = Topic.objects.get_or_create(name=topic_name)
+                    confidence_level = analysis_result['confidence_levels']['secondary_topics_confidences'][idx]
+                    BookTopic.objects.create(book=book, topic=topic, confidence_level=confidence_level)
+
+                response_data.append({'success': f'Book with ID {book_id} updated successfully', "data": analysis_result})
+
+        return standard_response(data=response_data, message="PDF information extraction and update completed", success=True)
