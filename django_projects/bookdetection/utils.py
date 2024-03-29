@@ -5,12 +5,16 @@ from ultralytics.utils.plotting import Annotator, colors
 
 from collections import defaultdict
 
+import os
+import json
+
 import cv2
 from PIL import Image
 
 import numpy as np
 
 import openai
+import tiktoken
 
 import pytesseract
 
@@ -153,51 +157,132 @@ class BookDetector:
 
     #     return frame, book_count, text_extracted_books, book_images, boxes
 
+
 class OpenAIClient:
-    def __init__(self):
+    def __init__(self, model="gpt-3.5-turbo"):
         self.load_api_key()
-        self.client = openai.OpenAI()
-        
+        if self.api_key:
+            self.client = openai.OpenAI(api_key=self.api_key)
+            self.model = model
+            try:
+                self.encoding = tiktoken.encoding_for_model(model)
+            except KeyError:
+                print(f"Model {model} not found in tiktoken. Falling back to a default encoding.")
+                self.encoding = tiktoken.get_encoding("cl100k_base")
+        else:
+            raise Exception("API key not loaded. Make sure api_key.txt is present and accessible.")
+    
+    def num_tokens_from_string(self, string: str) -> int:
+        """
+        Retorna el número de tokens en una cadena de texto utilizando la codificación para el modelo específico.
+        """
+        num_tokens = len(self.encoding.encode(string))
+        return num_tokens
+
+    def num_tokens_from_messages(self, messages):
+        """
+        Retorna el número de tokens usados por una lista de mensajes, ajustando para el formato de mensajes de Chat de OpenAI.
+        """
+        tokens_per_message = 3  # Asumir un valor predeterminado, ajustable según el modelo.
+        num_tokens = 0
+        for message in messages:
+            num_tokens += tokens_per_message
+            for key, value in message.items():
+                num_tokens += len(self.encoding.encode(value))
+                if key == "role":
+                    # El nombre del rol podría requerir ajustes de tokens adicionales.
+                    num_tokens += 1
+        # Ajuste para el priming de cada respuesta con el asistente.
+        num_tokens += 3
+        return num_tokens
+
+    def trim_to_max_tokens(self, text_content: str, max_tokens: int = 1500) -> str:
+        """
+        Recorta el contenido del texto a un número máximo de tokens.
+        """
+        tokens = self.encoding.encode(text_content)
+        if len(tokens) > max_tokens:
+            tokens = tokens[:max_tokens]
+            trimmed_text = self.encoding.decode(tokens)
+            return trimmed_text
+        else:
+            return text_content
 
     def load_api_key(self):
+        current_dir = os.path.dirname(os.path.realpath(__file__))
+        api_key_file_path = os.path.join(current_dir, "api_key.txt")
+
         try:
-            with open("api_key.txt", "r") as file:
+            with open(api_key_file_path, "r") as file:
                 self.api_key = file.read().strip()
-                openai.api_key = self.api_key
-        except Exception as e:
-            print("Error loading API key:", str(e))
+                print(f"API key loaded successfully: {self.api_key[:4]}...{self.api_key[-4:]}")
+        except IOError as e:
+            print(f"Error loading API key: {e}")
             self.api_key = None
 
     def analyze_text(self, text_content):
+        trimmed_text_content = self.trim_to_max_tokens(text_content, 1500)
+#         messages = [
+#                     {"role": "system", "content": """Based on the following excerpts taken from the first non-empty pages of a book in PDF format, especially those containing multiple works or an anthology, please analyze the content to identify the book's title, the names of various authors, and keywords that capture the main genre and related sub-genres or topics. Conduct a validation and cross-referencing process to ensure the accuracy of the extracted information, and estimate the confidence level for each identified piece of information (title, authors, main topic, and secondary topics). Determine the language of the text and tailor your analysis accordingly. Limit the identification of secondary topics to a maximum of ten. Here is the extracted text for your review:
+
+# Extracted text:"""},
+#                     {"role": "user", "content": trimmed_text_content},
+#                     {"role": "system", "content": """After reviewing the text, please fill in the following structure with the extracted information, ensuring that 'main_topic' refers to the main genre and 'secondary_topics' include sub-genres or related topics, all within the constraints of the identified content and language(s):
+
+# {
+# "title": "[Insert the identified title of the book here]",
+# "author": [Insert a list with the names of the identified authors here]",
+# "main_topic": "[Insert the keyword that defines the main genre here]",
+# "secondary_topics": [Insert a list with up to ten keywords defining the sub-genres or related topics here]",
+# "confidence_levels": {
+# "title": "[Insert confidence level for the title here]",
+# "author": "[Insert confidence levels for each author here]",
+# "main_topic_confidence": "[Insert confidence level for the main topic here]",
+# "secondary_topics_confidences": "[Insert confidence levels for each secondary topic here]"
+# }
+# }"""}
+#                 ]
+        messages = [
+            {"role": "system", "content": """You will analyze the excerpts from the first non-empty pages of a book, likely containing multiple works or an anthology. Your task is to identify the book's title, the names of various authors, and keywords that capture the main genre and related sub-genres or topics based on the content provided. Please execute a validation and cross-referencing process to ensure the accuracy of the identified information, estimating the confidence level for each identified piece, including the title, authors, main topic, and up to ten secondary topics. Determine the language of the text and adjust your analysis accordingly. You need to populate the given structure with 'main_topic_confidence' and 'secondary_topics_confidences' as lists, reflecting the certainty of each identified genre and topic. Here is the structure to be filled based on your analysis:
+             {
+            "title": "[Identified title]",
+            "author": "[List of authors]",
+            "main_topic": "[Main genre keyword]",
+            "secondary_topics": "[List of up to ten sub-genres or related topics]",
+            "confidence_levels": {
+                "title": "[Confidence level for the title]",
+                "author": "[Confidence levels for each author]",
+                "main_topic_confidence": "[Confidence level for the main topic]",
+                "secondary_topics_confidences": "[Confidence levels for each secondary topic]"
+            }
+            }
+            """},
+            {"role":"user", "content":trimmed_text_content},
+        ]
         try:
             if not self.api_key:
                 return {'error': 'API key not loaded'}
+            
+            # Intento de llamar a la API y usar la respuesta.
             response = self.client.chat.completions.create(
                 model="gpt-3.5-turbo",
-                response_format="json_object",
-                messages=[
-                    {"role": "system", "content": """Based on the following excerpts taken from the first non-empty pages of a book in PDF format, especially those containing multiple works or an anthology, please analyze the content to identify the book's title, the names of various authors, and keywords that capture the main genre and related sub-genres or topics. Conduct a validation and cross-referencing process to ensure the accuracy of the extracted information, and estimate the confidence level for each identified piece of information (title, authors, main topic, and secondary topics). Determine the language of the text and tailor your analysis accordingly. Limit the identification of secondary topics to a maximum of ten. Here is the extracted text for your review:
-
-Extracted text:"""},
-                    {"role": "user", "content": text_content},
-                    {"role": "system", "content": """After reviewing the text, please fill in the following structure with the extracted information, ensuring that 'main_topic' refers to the main genre and 'secondary_topics' include sub-genres or related topics, all within the constraints of the identified content and language(s):
-
-{
-"title": "[Insert the identified title of the book here]",
-"author": [Insert a list with the names of the identified authors here]",
-"main_topic": "[Insert the keyword that defines the main genre here]",
-"secondary_topics": [Insert a list with up to ten keywords defining the sub-genres or related topics here]",
-"confidence_levels": {
-"title": "[Insert confidence level for the title here]",
-"author": "[Insert confidence levels for each author here]",
-"main_topic": "[Insert confidence level for the main topic here]",
-"secondary_topics": "[Insert confidence levels for each secondary topic here]"
-}
-}"""}
-                ]
+                # response_format="json",
+                messages=messages
             )
-            return response.choices[0].message.content
+
+            # print("\n\n\n-----------------------------")
+            num_tokens = self.num_tokens_from_messages(messages)
+            # print(f"Total tokens to be used: {num_tokens}")
+            # print(response.choices[0].message.content)
+            return json.loads(response.choices[0].message.content)
+
+        except openai.BadRequestError as e:
+            # This catches HTTP errors related to bad requests specifically.
+            print("Bad request to OpenAI:", e)
+            return {'error': 'Bad request error: ' + str(e)}
         except Exception as e:
+            # This catches any other generic errors.
+            print("An unexpected error occurred:", e)
             return {'error': str(e)}
 
 class PDFTextExtractor:
