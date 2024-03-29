@@ -321,19 +321,40 @@ class ExtractPDFInfoView(APIView):
         ai_client = OpenAIClient()
 
         for book_id in book_ids:
-            try:
-                book = Book.objects.get(id=book_id, book_type='digital')
-            except Book.DoesNotExist:
-                response_data.append({'error': f'Book with ID {book_id} not found or is not digital'})
-                continue
+            with transaction.atomic():
+                try:
+                    book = Book.objects.select_for_update().get(id=book_id, book_type='digital')
+                except Book.DoesNotExist:
+                    response_data.append({'error': f'Book with ID {book_id} not found or is not digital'})
+                    continue
 
-            pdf_path = book.digital_file_path
-            text_content = PDFTextExtractor.extract_text_from_pdf(pdf_path)
-            if text_content is None or text_content == '':
-                response_data.append({'error': f'Failed to extract text for book ID {book_id}'})
-                continue
+                pdf_path = book.digital_file_path
+                text_content = PDFTextExtractor.extract_text_from_pdf(pdf_path)
+                if text_content is None or text_content == '':
+                    response_data.append({'error': f'Failed to extract text for book ID {book_id}'})
+                    continue
 
-            analysis_result = ai_client.analyze_text(text_content)
-            response_data.append(analysis_result)
+                analysis_result = ai_client.analyze_text(text_content)
 
-        return standard_response(data=response_data, message="PDF information extraction completed", success=True)
+                # Actualiza el título y autor
+                book.title = analysis_result.get('title', book.title)
+                book.author = analysis_result.get('author', book.author)
+                book.save()
+
+                # Actualiza el tema principal
+                main_topic_name = analysis_result.get('main_topic')
+                if main_topic_name:
+                    main_topic, _ = Genre.objects.get_or_create(name=main_topic_name)
+                    book.main_topic = main_topic
+                    book.save()
+
+                # Actualiza los temas secundarios
+                BookTopic.objects.filter(book=book).delete()
+                for idx, topic_name in enumerate(analysis_result.get('secondary_topics', [])):
+                    topic, _ = Topic.objects.get_or_create(name=topic_name)
+                    confidence_level = analysis_result['confidence_levels']['secondary_topics_confidences'][idx]
+                    BookTopic.objects.create(book=book, topic=topic, confidence_level=confidence_level)
+
+                response_data.append({'success': f'Book with ID {book_id} updated successfully', "data": analysis_result})
+
+        return standard_response(data=response_data, message="PDF information extraction and update completed", success=True)
