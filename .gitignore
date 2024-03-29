@@ -2,3 +2,5 @@
 django_projects/**/migrations/
 *.pt
 *.weights.1
+__pycache__/
+*.pyc
