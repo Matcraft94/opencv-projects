@@ -10,6 +10,8 @@ from PIL import Image
 
 import numpy as np
 
+import openai
+
 import pytesseract
 
 import re
@@ -148,3 +150,82 @@ class BookDetector:
     #     # images_array = np.array(book_images)
 
     #     return frame, book_count, text_extracted_books, book_images, boxes
+
+class OpenAIClient:
+    def __init__(self):
+        self.load_api_key()
+        self.client = openai.OpenAI()
+        
+
+    def load_api_key(self):
+        try:
+            with open("api_key.txt", "r") as file:
+                self.api_key = file.read().strip()
+                openai.api_key = self.api_key
+        except Exception as e:
+            print("Error loading API key:", str(e))
+            self.api_key = None
+
+    def analyze_text(self, text_content):
+        try:
+            if not self.api_key:
+                return {'error': 'API key not loaded'}
+            response = self.client.chat.completions.create(
+                model="gpt-3.5-turbo",
+                response_format="json_object",
+                messages=[
+                    {"role": "system", "content": """Based on the following excerpts taken from the first non-empty pages of a book in PDF format, especially those containing multiple works or an anthology, please analyze the content to identify the book's title, the names of various authors, and keywords that capture the main genre and related sub-genres or topics. Conduct a validation and cross-referencing process to ensure the accuracy of the extracted information, and estimate the confidence level for each identified piece of information (title, authors, main topic, and secondary topics). Determine the language of the text and tailor your analysis accordingly. Limit the identification of secondary topics to a maximum of ten. Here is the extracted text for your review:
+
+Extracted text:"""},
+                    {"role": "user", "content": text_content},
+                    {"role": "system", "content": """After reviewing the text, please fill in the following structure with the extracted information, ensuring that 'main_topic' refers to the main genre and 'secondary_topics' include sub-genres or related topics, all within the constraints of the identified content and language(s):
+
+{
+"title": "[Insert the identified title of the book here]",
+"author": [Insert a list with the names of the identified authors here]",
+"main_topic": "[Insert the keyword that defines the main genre here]",
+"secondary_topics": [Insert a list with up to ten keywords defining the sub-genres or related topics here]",
+"confidence_levels": {
+"title": "[Insert confidence level for the title here]",
+"author": "[Insert confidence levels for each author here]",
+"main_topic": "[Insert confidence level for the main topic here]",
+"secondary_topics": "[Insert confidence levels for each secondary topic here]"
+}
+}"""}
+                ]
+            )
+            return response.choices[0].message.content
+        except Exception as e:
+            return {'error': str(e)}
+
+class PDFTextExtractor:
+    """
+    Una clase para extraer texto de archivos PDF sin incluir imágenes.
+    """
+
+    @staticmethod
+    def extract_text_from_pdf(pdf_path):
+        """
+        Esta función extrae solo el texto de un archivo PDF, preservando la estructura básica del texto.
+        :param pdf_path: La ruta al archivo PDF del que se extraerá el texto.
+        :return: Un string que contiene el texto extraído del PDF.
+        """
+        if not os.path.exists(pdf_path):
+            return None  # Retorna None si el archivo no existe
+
+        try:
+            text_content = []
+            pdf = fitz.open(pdf_path)
+            for page in pdf:
+                text_blocks = page.get_text("blocks")
+                text_blocks.sort(key=lambda block: (block[1], block[0]))  # Ordena los bloques de texto
+                for block in text_blocks:
+                    # Cada 'block' contiene la posición del bloque en la página, el texto y otros metadatos.
+                    # Aquí solo nos interesa el texto, que es el índice 4 del bloque.
+                    text = block[4].strip()
+                    if text:
+                        text_content.append(text)
+            pdf.close()
+            return "\n".join(text_content)  # Une todos los fragmentos de texto con saltos de línea.
+        except Exception as e:
+            return f"Failed to read PDF: {str(e)}"
