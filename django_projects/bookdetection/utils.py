@@ -14,6 +14,8 @@ import openai
 
 import pytesseract
 
+import fitz
+
 import re
 import string
 from fuzzywuzzy import fuzz, process
