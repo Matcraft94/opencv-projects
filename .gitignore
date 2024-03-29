@@ -9,3 +9,6 @@ django_projects/**/migrations/
 # Ignorar archivos de caché de Python en cualquier parte del repositorio
 __pycache__/
 *.pyc
+
+# Ignoramos el archivo de api_key
+**/api_key.txt
