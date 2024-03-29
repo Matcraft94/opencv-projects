@@ -1,6 +1,11 @@
+# Ignorar archivos de pesos de modelos y archivos específicos
 *.weights
-django_projects/**/migrations/
 *.pt
 *.weights.1
+
+# Ignorar directorios de migraciones específicos de Django
+django_projects/**/migrations/
+
+# Ignorar archivos de caché de Python en cualquier parte del repositorio
 __pycache__/
 *.pyc
