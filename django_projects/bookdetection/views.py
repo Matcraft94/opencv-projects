@@ -23,7 +23,7 @@ from rest_framework.views import APIView
 # Django imports
 from django.http import JsonResponse
 from django.views.decorators.csrf import csrf_exempt
-from django.db import transaction
+from django.db import transaction, IntegrityError
 
 # PyMuPDF imports
 import fitz
@@ -116,25 +116,38 @@ class BookImageProcessView(APIView):
 
                     extracted_text = book_image_processor.extract_text(cv_image, *map(int, box))
                     truncated_text = extracted_text[:255]
-                    print(f"Extracted text: '{truncated_text}'")
+                    # print(f"Extracted text: '{truncated_text}'")
 
-                    book, created = Book.objects.get_or_create(title=truncated_text, defaults={'author': 'Unknown (transcription)'})
+                    # Asigna un género principal por simplicidad
+                    genre, _ = Genre.objects.get_or_create(name="Unknown Genre")
+                    book, created = Book.objects.get_or_create(
+                        title=truncated_text, 
+                        defaults={'author': 'Unknown (transcription)', 'main_topic': genre}
+                    )
                     print(f"Book created: {created}, Title: '{book.title}'")
 
                     cover_image_path = os.path.join(images_dir, f'book_{index}.png')
                     cv2.imwrite(cover_image_path, book_image)
                     book.cover_image_path = cover_image_path
-                    book.book_type = 'physical'
                     book.save()
+
+                    # Crea una descripción de ejemplo para el libro
+                    Description.objects.get_or_create(
+                        book=book,
+                        defaults={'content': 'No description available.'}
+                    )
 
                     book_ids.append(book.id)
 
-                print(f"All books in database: {Book.objects.all()}")
+                # print(f"All books in database: {Book.objects.all()}")
                 print("Books processed successfully.")
                 return standard_response(
                     data={
                         "book_count": len(data),
-                        "books": [{"id": book_id, "title": book.title, "cover_image_path": book.cover_image_path} for book_id in book_ids]
+                        "books": [
+                            {"id": book_id, "title": book.title, "cover_image_path": book.cover_image_path} 
+                            for book_id in book_ids
+                        ]
                     },
                     message="Books processed successfully." if len(data) > 0 else "No books detected."
                 )
@@ -157,28 +170,83 @@ class BookImageProcessView(APIView):
             )
 
     def get(self, request, *args, **kwargs):
-        books = Book.objects.all().values('id', 'title', 'author', 'cover_image_path',
-                                          'digital_file_path', 'book_type', 'genre__name', 'created_at')
+        books = Book.objects.all().values(
+            'id', 'title', 'author', 'cover_image_path',
+            'digital_file_path', 'book_type', 'main_topic__name', 'created_at'
+        )
+
         book_list = list(books)
 
-        # Convertir 'genre__name' a 'genre' y 'created_at' a string
+        # Asegúrate de cambiar 'main_topic__name' a 'genre' correctamente y formatear 'created_at'.
         for book in book_list:
-            book['genre'] = book.pop('genre__name', 'No Genre')
+            # Cambia 'main_topic__name' a 'genre'
+            book['genre'] = book.pop('main_topic__name', 'No Genre')
+            # Formatea 'created_at' como una cadena en un formato legible.
             book['created_at'] = book['created_at'].strftime('%Y-%m-%d %H:%M:%S') if book['created_at'] else 'Unknown'
 
         return standard_response(
-                success= True,
-                data = book_list,
-                message= 'Books retrieved successfully.',
-                code=status.HTTP_200_OK
-            )
+            success=True,
+            data=book_list,
+            message='Books retrieved successfully.'
+        )
 
         
 class BookPDFProcessView(APIView):
     parser_classes = (MultiPartParser, FormParser)
-
+    
+    @swagger_auto_schema(
+    operation_summary='Process and save PDF books',
+    operation_description='Processes uploaded PDF files, extracts metadata, saves the files, and updates the database with book details.',
+    request_body=openapi.Schema(
+            type=openapi.TYPE_OBJECT,
+            properties={
+                'pdf_file': openapi.Schema(type=openapi.TYPE_FILE, description='PDF file to process')
+            },
+            required=['pdf_file']
+        ),
+        responses={
+            200: openapi.Response(
+                description='PDFs processed successfully',
+                examples={
+                    'application/json': {
+                        'success': True,
+                        'data': [
+                            {
+                                'filename': 'example.pdf',
+                                'success': True,
+                                'book_id': 1,
+                                'message': 'Processed successfully'
+                            }
+                        ],
+                        'message': 'Batch processing completed'
+                    }
+                }
+            ),
+            400: openapi.Response(
+                description='Invalid request or no PDF provided',
+                examples={
+                    'application/json': {
+                        'success': False,
+                        'message': 'Method not allowed or PDF files not provided.'
+                    }
+                }
+            ),
+            500: openapi.Response(
+                description='Error processing the PDFs',
+                examples={
+                    'application/json': {
+                        'success': False,
+                        'message': 'An error occurred.'
+                    }
+                }
+            )
+        },
+    )
     def post(self, request, *args, **kwargs):
+        print("Inicio del método POST.")
+
         if request.method != 'POST' or not request.FILES.getlist('pdf_file'):
+            print("No es un método POST o no hay archivos PDF.")
             return standard_response(
                 data={},
                 message='Método no permitido o archivos PDF no proporcionados.',
@@ -187,54 +255,103 @@ class BookPDFProcessView(APIView):
             )
 
         pdf_files = request.FILES.getlist('pdf_file')
+        print(f"Archivos recibidos: {pdf_files}")
+
         response_data = []
-        
+
         for pdf_file in pdf_files:
-            file_stream = pdf_file.read()
+            print(f"Procesando: {pdf_file.name}")
             try:
-                pdf = fitz.open(stream=file_stream, filetype="pdf")
-            except Exception as e:
-                response_data.append({'filename': pdf_file.name, 'success': False, 'message': str(e)})
-                continue
+                pdf_file.seek(0)
+                file_stream = pdf_file.read()
 
-            metadatos = pdf.metadata
-            title = metadatos.get('title', 'Título desconocido')
-            author = metadatos.get('author', 'Autor desconocido')
+                with fitz.open(stream=file_stream, filetype="pdf") as pdf:
+                    metadata = pdf.metadata
+                    title = metadata.get('title', pdf_file.name[:-4]).strip() or "Untitled Document"
+                    author = metadata.get('author', 'Autor desconocido').strip() or "Unknown Author"
 
-            pdf_path = os.path.expanduser(f'~/books/{pdf_file.name}')
-            os.makedirs(os.path.dirname(pdf_path), exist_ok=True)
+                pdf_path = os.path.expanduser(f'~/books/{pdf_file.name}')
+                os.makedirs(os.path.dirname(pdf_path), exist_ok=True)
 
-            try:
+                print(f"Guardando PDF en: {pdf_path}")
+                pdf_file.seek(0)
                 with open(pdf_path, 'wb+') as destination:
-                    destination.write(file_stream)
-            except Exception as e:
-                response_data.append({'filename': pdf_file.name, 'success': False, 'message': str(e)})
-                continue
+                    for chunk in pdf_file.chunks():
+                        destination.write(chunk)
 
-            try:
-                book, created = Book.objects.update_or_create(
-                    title=title,
-                    defaults={
-                        'author': author,
-                        'digital_file_path': pdf_path,
-                        'book_type': 'digital',
-                    }
-                )
-                # Crea una descripción genérica si no existe una ya
-                Description.objects.get_or_create(
-                    book=book,
-                    defaults={'content': 'Descripción genérica aún no disponible.'}
-                )
-                response_data.append({'filename': pdf_file.name, 'success': True, 'book_id': book.id, 'message': 'Processed successfully'})
-            except Exception as e:
-                response_data.append({'filename': pdf_file.name, 'success': False, 'message': str(e)})
+                with transaction.atomic():
+                    book, created = Book.objects.get_or_create(
+                        title=title,
+                        defaults={'author': author, 'book_type': 'digital', 'digital_file_path': pdf_path}
+                    )
 
+                    if not created:
+                        # El libro ya existe, así que se actualiza la información.
+                        book.digital_file_path = pdf_path
+                        book.author = author
+                        book.book_type = 'digital'
+                        book.save()
+                        
+                    Description.objects.get_or_create(book=book, defaults={'content': 'Unknown description.'})
+
+                    print(f"Libro procesado: {book.title}, ID: {book.id}")
+                    response_data.append({
+                        'filename': pdf_file.name, 
+                        'success': True, 
+                        'book_id': book.id, 
+                        'message': 'Processed successfully'
+                    })
+
+            except Exception as e:
+                print(f"Error al procesar {pdf_file.name}: {e}")
+                traceback.print_exc()
+                response_data.append({
+                    'filename': pdf_file.name, 
+                    'success': False, 
+                    'message': str(e)
+                })
+
+        print("Procesamiento completado.")
         return standard_response(data=response_data, message="Batch processing completed")
 
 
 class BookDescriptionView(APIView):
     
-
+    @swagger_auto_schema(
+    operation_summary='Add a description to a book',
+    operation_description='Adds a descriptive text to the specified book in the database.',
+    request_body=openapi.Schema(
+            type=openapi.TYPE_OBJECT,
+            properties={
+                'book_id': openapi.Schema(type=openapi.TYPE_INTEGER, description='ID of the book to describe'),
+                'content': openapi.Schema(type=openapi.TYPE_STRING, description='Description content')
+            },
+            required=['book_id', 'content']
+        ),
+        responses={
+            200: openapi.Response(
+                description='Description added successfully',
+                examples={
+                    'application/json': {
+                        'success': True,
+                        'data': {
+                            'description_id': 1
+                        },
+                        'message': 'Description added successfully.'
+                    }
+                }
+            ),
+            400: openapi.Response(
+                description='Invalid request or error adding description',
+                examples={
+                    'application/json': {
+                        'success': False,
+                        'message': 'An error occurred or book not found.'
+                    }
+                }
+            )
+        },
+    )
     def post(self, request, format=None):
         try:
             book_id = request.data['book_id']
@@ -305,11 +422,68 @@ class BookDescriptionView(APIView):
 #         return standard_response(data=response_data, message="PDF information extraction completed")
 
 class ExtractPDFInfoView(APIView):
-
+    @swagger_auto_schema(
+    operation_summary='Extract information from PDF books',
+    operation_description='Extracts and updates information from specified PDF book IDs, including titles, authors, and topics.',
+    request_body=openapi.Schema(
+            type=openapi.TYPE_OBJECT,
+            properties={
+                'book_ids': openapi.Schema(type=openapi.TYPE_ARRAY, items=openapi.Items(type=openapi.TYPE_INTEGER), description='Array of book IDs to process')
+            },
+            required=['book_ids']
+        ),
+        responses={
+            200: openapi.Response(
+                description='PDF information extracted and updated successfully',
+                examples={
+                    'application/json': {
+                        'success': True,
+                        'data': [
+                            {
+                                'success': 'Book with ID 1 updated successfully',
+                                'data': {
+                                    'title': 'Example Book Title',
+                                    'author': ['Author One', 'Author Two'],
+                                    'main_topic': 'Example Topic',
+                                    'secondary_topics': ['Subtopic 1', 'Subtopic 2'],
+                                    'confidence_levels': {
+                                        'title': 'High',
+                                        'author': 'Medium',
+                                        'main_topic_confidence': 'High',
+                                        'secondary_topics_confidences': ['High', 'Medium']
+                                    }
+                                }
+                            }
+                        ],
+                        'message': 'PDF information extraction and update completed'
+                    }
+                }
+            ),
+            400: openapi.Response(
+                description='Invalid request or book IDs not provided',
+                examples={
+                    'application/json': {
+                        'success': False,
+                        'message': 'No book IDs provided.'
+                    }
+                }
+            ),
+            500: openapi.Response(
+                description='Error extracting information from PDFs',
+                examples={
+                    'application/json': {
+                        'success': False,
+                        'message': 'An error occurred.'
+                    }
+                }
+            )
+        },
+    )
     def post(self, request, *args, **kwargs):
         book_ids = request.data.get('book_ids')
 
         if not book_ids:
+            print("No se proporcionaron IDs de libros.")
             return standard_response(
                 data={},
                 message='No book IDs provided',
@@ -321,40 +495,30 @@ class ExtractPDFInfoView(APIView):
         ai_client = OpenAIClient()
 
         for book_id in book_ids:
+            print(f"Procesando el libro con ID: {book_id}")
             with transaction.atomic():
                 try:
                     book = Book.objects.select_for_update().get(id=book_id, book_type='digital')
                 except Book.DoesNotExist:
+                    print(f"Libro con ID {book_id} no encontrado o no es digital.")
                     response_data.append({'error': f'Book with ID {book_id} not found or is not digital'})
                     continue
 
-                pdf_path = book.digital_file_path
-                text_content = PDFTextExtractor.extract_text_from_pdf(pdf_path)
-                if text_content is None or text_content == '':
-                    response_data.append({'error': f'Failed to extract text for book ID {book_id}'})
-                    continue
+                try:
+                    text_content = PDFTextExtractor.extract_text_from_pdf(book.digital_file_path)
+                    if not text_content:
+                        raise ValueError(f'No text content extracted for book ID {book_id}')
 
-                analysis_result = ai_client.analyze_text(text_content)
+                    analysis_result = ai_client.analyze_text(text_content)
 
-                # Actualiza el título y autor
-                book.title = analysis_result.get('title', book.title)
-                book.author = analysis_result.get('author', book.author)
-                book.save()
+                    # Actualización del libro basada en el análisis
+                    book.update_from_analysis(analysis_result)
+                    response_data.append({'success': f'Book with ID {book_id} updated successfully', "data": analysis_result})
 
-                # Actualiza el tema principal
-                main_topic_name = analysis_result.get('main_topic')
-                if main_topic_name:
-                    main_topic, _ = Genre.objects.get_or_create(name=main_topic_name)
-                    book.main_topic = main_topic
-                    book.save()
+                except Exception as e:
+                    print(f"Error al procesar el libro con ID {book_id}: {e}")
+                    traceback.print_exc()
+                    response_data.append({'error': f'Error processing book ID {book_id}'})
 
-                # Actualiza los temas secundarios
-                BookTopic.objects.filter(book=book).delete()
-                for idx, topic_name in enumerate(analysis_result.get('secondary_topics', [])):
-                    topic, _ = Topic.objects.get_or_create(name=topic_name)
-                    confidence_level = analysis_result['confidence_levels']['secondary_topics_confidences'][idx]
-                    BookTopic.objects.create(book=book, topic=topic, confidence_level=confidence_level)
-
-                response_data.append({'success': f'Book with ID {book_id} updated successfully', "data": analysis_result})
-
+        print("Extracción y actualización de información de PDF completadas.")
         return standard_response(data=response_data, message="PDF information extraction and update completed", success=True)
