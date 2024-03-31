@@ -29,23 +29,29 @@ class Book(models.Model):
         return self.title
 
     def update_from_analysis(self, analysis_result):
+        # Actualizar título y autor si están presentes en los resultados del análisis
         self.title = analysis_result.get('title', self.title)
         self.author = analysis_result.get('author', self.author)
 
+        # Actualizar el tema principal si está presente en los resultados del análisis
         main_topic_name = analysis_result.get('main_topic')
         if main_topic_name:
             main_topic, _ = Genre.objects.get_or_create(name=main_topic_name)
             self.main_topic = main_topic
 
-        # Aquí se elimina la relación de temas secundarios existentes.
+        # Eliminar las relaciones de temas secundarios existentes antes de actualizar
         BookTopic.objects.filter(book=self).delete()
 
-        for idx, topic_name in enumerate(analysis_result.get('secondary_topics', [])):
+        # Obtener los niveles de confianza para los temas secundarios
+        secondary_topic_confidences = analysis_result.get('data', {}).get('confidence_levels', {}).get('secondary_topics_confidences', [])
+
+        # Crear o actualizar las relaciones de temas secundarios con sus respectivos niveles de confianza
+        for idx, topic_name in enumerate(analysis_result.get('data', {}).get('secondary_topics', [])):
             topic, _ = Topic.objects.get_or_create(name=topic_name)
-            confidence_level = 'Low'  # Asume un nivel de confianza por defecto o ajusta como sea necesario.
-            # Si 'analysis_result' contiene niveles de confianza específicos, úsalos aquí.
+            confidence_level = secondary_topic_confidences[idx] if idx < len(secondary_topic_confidences) else 'Low'
             BookTopic.objects.create(book=self, topic=topic, confidence_level=confidence_level)
 
+        # Guardar el libro actualizado
         self.save()
 
 
