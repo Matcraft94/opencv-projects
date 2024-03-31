@@ -29,29 +29,34 @@ class Book(models.Model):
         return self.title
 
     def update_from_analysis(self, analysis_result):
-        # Actualizar título y autor si están presentes en los resultados del análisis
-        self.title = analysis_result.get('title', self.title)
-        self.author = analysis_result.get('author', self.author)
+        # Actualizar título y autor solo si el nivel de confianza es suficiente
+        if analysis_result.get('confidence_levels', {}).get('title') == 'High':
+            self.title = analysis_result.get('title', self.title)
 
-        # Actualizar el tema principal si está presente en los resultados del análisis
-        main_topic_name = analysis_result.get('main_topic')
-        if main_topic_name:
-            main_topic, _ = Genre.objects.get_or_create(name=main_topic_name)
-            self.main_topic = main_topic
+        # Considerando que podría haber varios autores con diferentes niveles de confianza
+        if analysis_result.get('confidence_levels', {}).get('author', [])[0] == 'High':  # Suponiendo el primer autor como principal
+            self.author = analysis_result.get('author', self.author)[0]  # Asume que el primer autor es el principal
+
+        # Actualizar el tema principal si el nivel de confianza es alto
+        if analysis_result.get('confidence_levels', {}).get('main_topic_confidence') == 'High':
+            main_topic_name = analysis_result.get('main_topic')
+            if main_topic_name:
+                main_topic, _ = Genre.objects.get_or_create(name=main_topic_name)
+                self.main_topic = main_topic
 
         # Eliminar las relaciones de temas secundarios existentes antes de actualizar
         BookTopic.objects.filter(book=self).delete()
 
-        # Obtener los niveles de confianza para los temas secundarios
-        secondary_topic_confidences = analysis_result.get('data', {}).get('confidence_levels', {}).get('secondary_topics_confidences', [])
+        # Actualizar los temas secundarios y sus niveles de confianza
+        secondary_topics = analysis_result.get('secondary_topics', [])
+        secondary_topic_confidences = analysis_result.get('confidence_levels', {}).get('secondary_topics_confidences', [])
 
-        # Crear o actualizar las relaciones de temas secundarios con sus respectivos niveles de confianza
-        for idx, topic_name in enumerate(analysis_result.get('data', {}).get('secondary_topics', [])):
-            topic, _ = Topic.objects.get_or_create(name=topic_name)
-            confidence_level = secondary_topic_confidences[idx] if idx < len(secondary_topic_confidences) else 'Low'
-            BookTopic.objects.create(book=self, topic=topic, confidence_level=confidence_level)
+        for idx, topic_name in enumerate(secondary_topics):
+            if idx < len(secondary_topic_confidences) and secondary_topic_confidences[idx] == 'High':
+                topic, _ = Topic.objects.get_or_create(name=topic_name)
+                confidence_level = secondary_topic_confidences[idx]
+                BookTopic.objects.create(book=self, topic=topic, confidence_level=confidence_level)
 
-        # Guardar el libro actualizado
         self.save()
 
 
