@@ -287,31 +287,31 @@ class OpenAIClient:
 
 class PDFTextExtractor:
     """
-    Una clase para extraer texto de archivos PDF sin incluir imágenes.
+    Una clase para extraer texto de archivos PDF sin incluir imágenes, 
+    procesando un máximo de 10 páginas o el total de páginas si son menos de 10.
     """
 
     @staticmethod
     def extract_text_from_pdf(pdf_path):
         """
-        Esta función extrae solo el texto de un archivo PDF, preservando la estructura básica del texto.
+        Esta función extrae el texto de las primeras 10 páginas de un archivo PDF o menos si el PDF tiene menos de 10 páginas,
+        preservando la estructura básica del texto.
         :param pdf_path: La ruta al archivo PDF del que se extraerá el texto.
         :return: Un string que contiene el texto extraído del PDF.
         """
         if not os.path.exists(pdf_path):
-            return None  # Retorna None si el archivo no existe
+            return None  # Retorna None si el archivo no existe.
 
         try:
             text_content = []
             pdf = fitz.open(pdf_path)
-            for page in pdf:
-                text_blocks = page.get_text("blocks")
-                text_blocks.sort(key=lambda block: (block[1], block[0]))  # Ordena los bloques de texto
-                for block in text_blocks:
-                    # Cada 'block' contiene la posición del bloque en la página, el texto y otros metadatos.
-                    # Aquí solo nos interesa el texto, que es el índice 4 del bloque.
-                    text = block[4].strip()
-                    if text:
-                        text_content.append(text)
+            # Procesa hasta 10 páginas o el total de páginas si son menos de 10.
+            num_pages = min(10, len(pdf))
+            for page_number in range(num_pages):
+                page = pdf.load_page(page_number)
+                text_page = page.get_text("text")
+                if text_page:
+                    text_content.append(text_page)
             pdf.close()
             return "\n".join(text_content)  # Une todos los fragmentos de texto con saltos de línea.
         except Exception as e:
