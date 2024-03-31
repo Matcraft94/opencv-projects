@@ -23,7 +23,7 @@ from rest_framework.views import APIView
 # Django imports
 from django.http import JsonResponse
 from django.views.decorators.csrf import csrf_exempt
-from django.db import transaction
+from django.db import transaction, IntegrityError
 
 # PyMuPDF imports
 import fitz
@@ -280,12 +280,18 @@ class BookPDFProcessView(APIView):
                         destination.write(chunk)
 
                 with transaction.atomic():
-                    book, created = Book.objects.update_or_create(
+                    book, created = Book.objects.get_or_create(
                         title=title,
-                        digital_file_path=pdf_path,
-                        defaults={'author': author, 'book_type': 'digital'}
+                        defaults={'author': author, 'book_type': 'digital', 'digital_file_path': pdf_path}
                     )
 
+                    if not created:
+                        # El libro ya existe, así que se actualiza la información.
+                        book.digital_file_path = pdf_path
+                        book.author = author
+                        book.book_type = 'digital'
+                        book.save()
+                        
                     Description.objects.get_or_create(book=book, defaults={'content': 'Unknown description.'})
 
                     print(f"Libro procesado: {book.title}, ID: {book.id}")
@@ -298,7 +304,7 @@ class BookPDFProcessView(APIView):
 
             except Exception as e:
                 print(f"Error al procesar {pdf_file.name}: {e}")
-                traceback.print_exc()  # Esto imprimirá la traza del error en la consola.
+                traceback.print_exc()
                 response_data.append({
                     'filename': pdf_file.name, 
                     'success': False, 
