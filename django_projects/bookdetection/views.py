@@ -478,7 +478,7 @@ class ExtractPDFInfoView(APIView):
                 }
             )
         },
-    )
+        )
     def post(self, request, *args, **kwargs):
         book_ids = request.data.get('book_ids')
 
@@ -510,15 +510,22 @@ class ExtractPDFInfoView(APIView):
                         raise ValueError(f'No text content extracted for book ID {book_id}')
 
                     analysis_result = ai_client.analyze_text(text_content)
-
-                    # Actualización del libro basada en el análisis
                     book.update_from_analysis(analysis_result)
-                    response_data.append({'success': f'Book with ID {book_id} updated successfully', "data": analysis_result})
+
+                    # Renombrar el archivo PDF
+                    if book.author and book.title:
+                        new_filename = f"{book.author.replace(' ', '_')}-{book.title.replace(' ', '_')}.pdf"
+                        new_filepath = os.path.join(os.path.dirname(book.digital_file_path), new_filename)
+                        os.rename(book.digital_file_path, new_filepath)
+                        book.digital_file_path = new_filepath
+                        book.save()
+
+                    response_data.append({'success': f'Book with ID {book_id} updated and renamed successfully', "data": analysis_result})
 
                 except Exception as e:
                     print(f"Error al procesar el libro con ID {book_id}: {e}")
                     traceback.print_exc()
                     response_data.append({'error': f'Error processing book ID {book_id}'})
 
-        print("Extracción y actualización de información de PDF completadas.")
-        return standard_response(data=response_data, message="PDF information extraction and update completed", success=True)
+        print("Extracción y actualización de información de PDF completadas, incluido el renombrado de archivos.")
+        return standard_response(data=response_data, message="PDF information extraction, update, and renaming completed", success=True)
