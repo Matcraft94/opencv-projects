@@ -522,10 +522,18 @@ class ExtractPDFInfoView(APIView):
 
                     response_data.append({'success': f'Book with ID {book_id} updated and renamed successfully', "data": analysis_result})
 
-                except Exception as e:
-                    print(f"Error al procesar el libro con ID {book_id}: {e}")
+                except ValueError as ve:
+                    print(f"ValueError processing book ID {book_id}: {ve}")
                     traceback.print_exc()
-                    response_data.append({'error': f'Error processing book ID {book_id}'})
+                    response_data.append({'error': f'ValueError for book ID {book_id}: {str(ve)}'})
+                except Exception as e:
+                    print(f"Unexpected error processing book ID {book_id}: {e}")
+                    # Capturando más detalles del rastreo de la pila
+                    exc_type, exc_obj, exc_tb = sys.exc_info()
+                    fname = os.path.split(exc_tb.tb_frame.f_code.co_filename)[1]
+                    print(f"Exception type: {exc_type}, File: {fname}, Line: {exc_tb.tb_lineno}")
+                    traceback.print_exc()
+                    response_data.append({'error': f'Unexpected error processing book ID {book_id}: {str(e)} at {fname}:{exc_tb.tb_lineno}'})
 
         print("Extracción y actualización de información de PDF completadas, incluido el renombrado de archivos.")
         return standard_response(data=response_data, message="PDF information extraction, update, and renaming completed", success=True)
